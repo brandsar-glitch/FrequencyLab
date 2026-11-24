@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#10151f"><title>Frequency Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#10151f;--panel:#1b2432;--panel2:#263346;--gold:#efb957;--muted:#aab7c8;--line:#34445a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#f5f7fb;font:16px system-ui, sans-serif;padding:18px;max-width:760px;margin:auto}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}h1{font-size:19px;letter-spacing:2px;margin:0}small,.muted{color:var(--muted)}
+.pill{border:1px solid #42634e;color:#8ee0a6;border-radius:20px;padding:5px 10px;font-size:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:16px;margin:13px 0}
+h2{font-size:15px;margin:0 0 13px;color:#dfe7f2}.big{font-size:42px;text-align:center;color:var(--gold);font-weight:700;font-variant-numeric:tabular-nums;margin:8px 0}
+input,select,button{font:inherit}input[type=number],input[type=text],select{background:#101925;color:white;border:1px solid var(--line);border-radius:10px;padding:12px;width:100%;min-width:0}
+input[type=range]{width:100%;accent-color:var(--gold)}.row{display:flex;gap:9px;align-items:center}.row>*{flex:1}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+button{border:0;border-radius:11px;padding:12px 8px;background:var(--panel2);color:white;font-weight:650;min-height:46px}
+button:active{transform:scale(.98)}button.primary{background:var(--gold);color:#171717}button.stop{background:#9d4149;color:white}
+button.selected{outline:2px solid var(--gold)}.noisegrid{grid-template-columns:repeat(2,1fr)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+label{display:block;color:var(--muted);font-size:13px;margin:10px 0 6px}
+.preset{position:relative;text-align:left}.preset span{display:block;color:var(--gold);font-size:13px;margin-top:4px}
+footer{font-size:12px;color:var(--muted);line-height:1.5;padding:8px 2px 22px}
+@media(min-width:600px){body{padding:28px}.grid{grid-template-columns:repeat(4,1fr)}.noisegrid{grid-template-columns:repeat(3,1fr)}}
+</style></head><body>
+<header><h1>FREQUENCY LAB</h1><span class="pill" id="status">STOPPED</span></header>
+<section class="card">
+<h2>FREQUENCY GENERATOR</h2><div class="big" id="readout">440 Hz</div>
+<div class="row"><input id="freq" type="number" min="1" max="20000" step="1" value="440" aria-label="Frekvens i hertz"><select id="wave" aria-label="Bølgeform"><option value="sine">Sine</option><option value="square">Square</option><option value="sawtooth">Sawtooth</option><option value="triangle">Triangle</option></select></div>
+<label for="freqRange">Frekvens (1–20 000 Hz)</label><input id="freqRange" type="range" min="1" max="20000" value="440">
+<div class="actions"><button class="primary" id="play">▶ PLAY</button><button class="stop" id="stop">■ STOP</button></div>
+</section>
+<section class="card"><h2>QUICK FREQUENCIES</h2><div class="grid" id="quick">
+<button data-f="55">55 Hz</button><button data-f="110">110 Hz</button><button data-f="220">220 Hz</button><button data-f="440">440 Hz</button><button data-f="528">528 Hz</button><button data-f="1000">1 kHz</button><button data-f="2000">2 kHz</button><button data-f="5000">5 kHz</button><button data-f="10000">10 kHz</button>
+</div></section>
+<section class="card"><h2>NOISE GENERATOR</h2><div class="grid noisegrid">
+<button data-noise="white">White noise</button><button data-noise="pink">Pink noise</button><button data-noise="brown">Brown noise</button><button data-noise="blue">Blue noise</button><button data-noise="violet">Violet noise</button>
+</div><p class="muted" style="font-size:12px">Støyknappene spiller kontinuerlig støy til du trykker STOP.</p></section>
+<section class="card"><h2>VOLUME</h2><div class="row"><input id="volume" type="range" min="0" max="100" value="10"><b id="volText">10%</b></div><p class="muted" style="font-size:12px">Starter lavt av hensyn til hørselen.</p></section>
+<section class="card"><h2>MY SAVED BUTTONS</h2><label for="presetName">Navn på knapp</label><input id="presetName" type="text" maxlength="22" placeholder="F.eks. Deep Drone">
+<div class="row" style="margin-top:9px"><button class="primary" id="save">＋ SAVE CURRENT TONE</button><button id="clear">CLEAR ALL</button></div>
+<div class="grid" id="saved" style="margin-top:12px"></div></section>
+<footer>FREQUENCY LAB · Version 1.0<br>Bruk lavt volum, særlig ved hodetelefoner. Frekvenser under ca. 20 Hz og over ca. 20 kHz kan være uhørbare eller gjengis dårlig av utstyret ditt.</footer>
+<script>
+let ctx=null, source=null, gain=null, active=false, noiseBuffer=null, currentMode='tone';
+const $=id=>document.getElementById(id);
+function hz(){return Math.max(1,Math.min(20000,Number($('freq').value)||440))}
+function updateFreq(v){v=Math.max(1,Math.min(20000,Math.round(Number(v)||440)));$('freq').value=v;$('freqRange').value=v;$('readout').textContent=v>=1000?(v/1000).toFixed(v%1000?2:0)+' kHz':v+' Hz'}
+function setup(){if(!ctx){ctx=new (window.AudioContext||window.webkitAudioContext)();gain=ctx.createGain();gain.gain.value=Number($('volume').value)/100;gain.connect(ctx.destination)}if(ctx.state==='suspended')ctx.resume()}
+function stop(){if(source){try{source.stop()}catch(e){}try{source.disconnect()}catch(e){}source=null}active=false;$('status').textContent='STOPPED'}
+function startTone(){setup();stop();currentMode='tone';const o=ctx.createOscillator();o.type=$('wave').value;o.frequency.value=hz();o.connect(gain);o.start();source=o;active=true;$('status').textContent='PLAYING · TONE'}
+function makeNoise(kind){
+ const len=ctx.sampleRate*3, b=ctx.createBuffer(1,len,ctx.sampleRate), d=b.getChannelData(0);
+ let last=0,last2=0,last3=0,last4=0,last5=0,last6=0,prev=0;
+ for(let i=0;i<len;i++){let w=Math.random()*2-1,x;
+ if(kind==='white')x=w;
+ else if(kind==='pink'){last=.99886*last+w*.0555179;last2=.99332*last2+w*.0750759;last3=.969*w+w*.153852;last4=.8665*last4+w*.3104856;last5=.55*last5+w*.5329522;last6=-.7616*last6-w*.016898; x=(last+last2+last3+last4+last5+last6+w*.5362)*.11}
+ else if(kind==='brown'){last=(last+.02*w)/1.02;x=last*3.5}
+ else if(kind==='blue'){x=w-prev;prev=w}
+ else {x=w-2*prev+last2;last2=prev;prev=w}
+ d[i]=Math.max(-1,Math.min(1,x))}
+ return b}
+function startNoise(kind){setup();stop();currentMode=kind;const s=ctx.createBufferSource();s.buffer=makeNoise(kind);s.loop=true;s.connect(gain);s.start();source=s;active=true;$('status').textContent='PLAYING · '+kind.toUpperCase()+' NOISE'}
+$('freq').addEventListener('input',e=>updateFreq(e.target.value));$('freqRange').addEventListener('input',e=>updateFreq(e.target.value));
+$('wave').addEventListener('change',()=>{if(active&&currentMode==='tone')startTone()});
+$('play').onclick=startTone;$('stop').onclick=stop;
+$('volume').oninput=()=>{let v=Number($('volume').value);$('volText').textContent=v+'%';if(gain)gain.gain.setTargetAtTime(v/100,ctx.currentTime,.02)};
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{updateFreq(b.dataset.f);startTone()});
+document.querySelectorAll('[data-noise]').forEach(b=>b.onclick=()=>startNoise(b.dataset.noise));
+function readSaved(){try{return JSON.parse(localStorage.getItem('fl-presets')||'[]')}catch(e){return []}}
+function drawSaved(){let box=$('saved');box.innerHTML='';readSaved().forEach((p,i)=>{let b=document.createElement('button');b.className='preset';b.textContent=p.name;let span=document.createElement('span');span.textContent=p.hz+' Hz';b.appendChild(span);b.onclick=()=>{updateFreq(p.hz);startTone()};b.oncontextmenu=e=>{e.preventDefault();let a=readSaved();a.splice(i,1);localStorage.setItem('fl-presets',JSON.stringify(a));drawSaved()};box.appendChild(b)})}
+$('save').onclick=()=>{let name=$('presetName').value.trim()||('Preset '+(readSaved().length+1));let a=readSaved();a.push({name,hz:hz()});localStorage.setItem('fl-presets',JSON.stringify(a));$('presetName').value='';drawSaved()};
+$('clear').onclick=()=>{if(confirm('Slette alle lagrede knapper?')){localStorage.removeItem('fl-presets');drawSaved()}};
+updateFreq(440);drawSaved();
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&ctx&&ctx.state==='running'){/* keep playback behavior to browser */}});
+</script></body></html>
